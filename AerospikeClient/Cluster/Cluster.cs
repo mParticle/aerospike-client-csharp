@@ -68,6 +68,7 @@ namespace Aerospike.Client
 		// Tend thread variables.
 		private Thread tendThread;
 		private volatile bool tendValid;
+		private ManualResetEvent tendAlerter;
 
 		// Request prole replicas in addition to master replicas?
 		private bool requestProleReplicas;
@@ -161,6 +162,7 @@ namespace Aerospike.Client
 
 			// Run cluster tend thread.
 			tendValid = true;
+			tendAlerter = new ManualResetEvent(false);
 			tendThread = new Thread(new ThreadStart(this.Run));
 			tendThread.Name = "tend";
 			tendThread.IsBackground = true;
@@ -244,9 +246,6 @@ namespace Aerospike.Client
 				{
 					Tend(false);
 				}
-				catch (ThreadInterruptedException)
-				{
-				}
 				catch (Exception e)
 				{
 					if (Log.WarnEnabled())
@@ -254,7 +253,7 @@ namespace Aerospike.Client
 						Log.Warn("Cluster tend failed: " + Util.GetErrorMessage(e));
 					}
 				}
-				Util.Sleep(tendInterval);
+				tendAlerter.WaitOne(tendInterval);
 			}
 		}
 
@@ -284,7 +283,7 @@ namespace Aerospike.Client
 			{
 				try
 				{
-					if (node.Active)
+					if (node.Active && tendValid)
 					{
 						node.Refresh(friendList);
 						node.failures = 0;
@@ -339,7 +338,7 @@ namespace Aerospike.Client
 			// Add all nodes at once to avoid copying entire array multiple times.
 			List<Node> list = new List<Node>();
 
-			for (int i = 0; i < seedArray.Length; i++)
+			for (int i = 0; i < seedArray.Length && tendValid; i++)
 			{
 				Host seed = seedArray[i];
 
@@ -868,7 +867,10 @@ namespace Aerospike.Client
 		public void Close()
 		{
 			tendValid = false;
-			tendThread.Interrupt();
+			if (tendAlerter != null)
+			{
+				tendAlerter.Set();
+			}
 
 			// Must copy array reference for copy on write semantics to work.
 			Node[] nodeArray = nodes;

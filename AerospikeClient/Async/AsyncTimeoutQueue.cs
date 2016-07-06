@@ -29,6 +29,7 @@ namespace Aerospike.Client
 		private ConcurrentQueue<AsyncCommand> queue = new ConcurrentQueue<AsyncCommand>();
 		private LinkedList<AsyncCommand> list = new LinkedList<AsyncCommand>();
 		private Thread thread;
+		private AutoResetEvent timerChangedEvent = new AutoResetEvent(false);
 		private volatile int sleepInterval = int.MaxValue;
 		private volatile bool valid;
 
@@ -52,7 +53,7 @@ namespace Aerospike.Client
 			if (timeout < sleepInterval)
 			{
 				sleepInterval = timeout;
-				thread.Interrupt();
+				timerChangedEvent.Set();
 			}
 		}
 
@@ -60,12 +61,8 @@ namespace Aerospike.Client
 		{
 			while (valid)
 			{
-				try
-				{
-					int t = (sleepInterval == int.MaxValue) ? Timeout.Infinite : sleepInterval + 1;
-					Thread.Sleep(t);
-				}
-				catch (ThreadInterruptedException)
+				int t = (sleepInterval == int.MaxValue) ? Timeout.Infinite : sleepInterval + 1;
+				if (timerChangedEvent.WaitOne(t))
 				{
 					// Sleep interrupted.  Sleep again with new timeout value.
 					continue;
@@ -120,6 +117,7 @@ namespace Aerospike.Client
 		public void Stop()
 		{
 			valid = false;
+			timerChangedEvent.Set();
 		}
 	}
 }
