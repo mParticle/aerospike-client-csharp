@@ -68,7 +68,8 @@ namespace Aerospike.Client
 		// Tend thread variables.
 		private Thread tendThread;
 		private volatile bool tendValid;
-		private ManualResetEvent tendAlerter;
+        private volatile bool shouldTend = true;
+        private ManualResetEvent tendAlerter;
 
 		// Request prole replicas in addition to master replicas?
 		private bool requestProleReplicas;
@@ -113,6 +114,7 @@ namespace Aerospike.Client
 
 		public virtual void InitTendThread(bool failIfNotConnected)
 		{
+            shouldTend = true;
 			// Tend cluster until all nodes identified.
 			WaitTillStabilized(failIfNotConnected);
 
@@ -283,7 +285,7 @@ namespace Aerospike.Client
 			{
 				try
 				{
-					if (node.Active && tendValid)
+					if (node.Active && shouldTend)
 					{
 						node.Refresh(friendList);
 						node.failures = 0;
@@ -338,7 +340,7 @@ namespace Aerospike.Client
 			// Add all nodes at once to avoid copying entire array multiple times.
 			List<Node> list = new List<Node>();
 
-			for (int i = 0; i < seedArray.Length && tendValid; i++)
+			for (int i = 0; i < seedArray.Length && shouldTend; i++)
 			{
 				Host seed = seedArray[i];
 
@@ -867,6 +869,7 @@ namespace Aerospike.Client
 		public void Close()
 		{
 			tendValid = false;
+            		shouldTend = false;
 			if (tendAlerter != null)
 			{
 				tendAlerter.Set();
